@@ -75,6 +75,19 @@ TestModel.init({
     deadline: {
         type: DataTypes.DATE,
         allowNull: true
+    },
+    isBankRandomized: {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    },
+    bankSubject: {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    },
+    bankQuestionCount: {
+        type: DataTypes.INTEGER,
+        allowNull: true
     }
 }, {
     sequelize,

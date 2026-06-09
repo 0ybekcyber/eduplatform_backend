@@ -77,10 +77,13 @@ class TestController extends BaseController {
 
     prepareRandomQuestion = (question) => {
         const source = typeof question.toJSON === 'function' ? question.toJSON() : question;
-        const options = this.shuffle(source.options || []);
-        const correctAnswer = options.find(option => option.toLowerCase() === source.correctAnswer.toLowerCase()) || source.correctAnswer;
+        const options = this.shuffle(source.options || []).map(option => (option || '').toString());
+        const sourceCorrectAnswer = (source.correctAnswer || '').toString();
+        const correctAnswer = options.find(option => option.toLowerCase() === sourceCorrectAnswer.toLowerCase()) || sourceCorrectAnswer;
 
         return {
+            id: source.id,
+            bankQuestionId: source.bankQuestionId || source.id,
             text: source.text,
             options,
             correctAnswer,
@@ -187,18 +190,91 @@ class TestController extends BaseController {
         res.send({ questions, total: bankItems.length, subject: subject || null });
     };
 
+    getAttempt = async (req, res, next) => {
+        const test = await TestModel.findOne({
+            where: { id: req.params.id },
+            include: [
+                { model: UserModel, as: 'teacher', attributes: ['firstname', 'lastname'] },
+                { model: QuestionModel, as: 'questions' }
+            ]
+        });
+        if (!test) throw new HttpException(404, 'Test topilmadi');
+
+        if (req.currentUser?.role === 'Student' && !this.canStudentAccessTest(req.currentUser, test)) {
+            throw new HttpException(403, 'Siz bu testni topshira olmaysiz');
+        }
+
+        const testData = test.toJSON();
+        if (!testData.isBankRandomized) {
+            testData.questions = this.shuffle(testData.questions || []).map(this.prepareRandomQuestion);
+            return res.send(testData);
+        }
+
+        const count = Number(testData.bankQuestionCount || 0);
+        const subject = (testData.bankSubject || '').toString().trim();
+        if (!subject || !count || count <= 0) {
+            throw new HttpException(400, 'Test uchun fan bazasi yoki savollar soni noto`g`ri sozlangan');
+        }
+
+        const bankItems = await QuestionBankItemModel.findAll({
+            where: {
+                teacherId: testData.teacherId,
+                subject
+            }
+        });
+        if (bankItems.length < count) {
+            throw new HttpException(400, `Fan bazasida savollar yetarli emas. Kerak: ${count}, mavjud: ${bankItems.length}`);
+        }
+
+        const previousResults = await ResultModel.findAll({ where: { testId: testData.id }, attributes: ['answers'] });
+        const usedBankQuestionIds = new Set();
+        previousResults.forEach(result => {
+            const answers = Array.isArray(result.answers) ? result.answers : [];
+            answers.forEach(answer => {
+                if (answer?.bankQuestionId) usedBankQuestionIds.add(Number(answer.bankQuestionId));
+                else if (answer?.questionId?.toString().startsWith('bank-')) {
+                    usedBankQuestionIds.add(Number(answer.questionId.toString().replace('bank-', '')));
+                }
+            });
+        });
+
+        const unusedBankItems = bankItems.filter(item => !usedBankQuestionIds.has(Number(item.id)));
+        const reusedBankItems = bankItems.filter(item => usedBankQuestionIds.has(Number(item.id)));
+        const selectionPool = [
+            ...this.shuffle(unusedBankItems),
+            ...this.shuffle(reusedBankItems)
+        ];
+
+        testData.questions = selectionPool
+            .slice(0, count)
+            .map(item => this.prepareRandomQuestion({
+                ...item.toJSON(),
+                id: `bank-${item.id}`,
+                bankQuestionId: item.id
+            }));
+
+        res.send(testData);
+    };
+
     create = async (req, res, next) => {
-        const { name, description, duration, maxScore, facultyIds, groupIds, studentIds, deadline, questions } = req.body;
+        const { name, description, duration, maxScore, facultyIds, groupIds, studentIds, deadline, questions, isBankRandomized, bankSubject, bankQuestionCount } = req.body;
         const teacherId = req.currentUser.id;
         const safeMaxScore = Number(maxScore || 100);
+        const safeBankQuestionCount = bankQuestionCount ? Number(bankQuestionCount) : null;
 
         if (!safeMaxScore || safeMaxScore <= 0) {
             throw new HttpException(400, 'Test bali 0 dan katta bo`lishi kerak');
         }
+        if (isBankRandomized && (!bankSubject || !safeBankQuestionCount || safeBankQuestionCount <= 0)) {
+            throw new HttpException(400, 'Fan bazasi va har bir talabaga beriladigan savollar sonini kiriting');
+        }
 
         const result = await sequelize.transaction(async (t) => {
             const test = await TestModel.create({
-                name, description, duration, maxScore: safeMaxScore, facultyIds, groupIds, studentIds: this.parseIds(studentIds), deadline, teacherId
+                name, description, duration, maxScore: safeMaxScore, facultyIds, groupIds, studentIds: this.parseIds(studentIds), deadline, teacherId,
+                isBankRandomized: !!isBankRandomized,
+                bankSubject: isBankRandomized ? bankSubject : null,
+                bankQuestionCount: isBankRandomized ? safeBankQuestionCount : null
             }, { transaction: t });
 
             if (questions && questions.length > 0) {
@@ -216,12 +292,16 @@ class TestController extends BaseController {
     };
 
     update = async (req, res, next) => {
-        const { name, description, duration, maxScore, facultyIds, groupIds, studentIds, deadline, questions } = req.body;
+        const { name, description, duration, maxScore, facultyIds, groupIds, studentIds, deadline, questions, isBankRandomized, bankSubject, bankQuestionCount } = req.body;
         const testId = req.params.id;
         const safeMaxScore = Number(maxScore || 100);
+        const safeBankQuestionCount = bankQuestionCount ? Number(bankQuestionCount) : null;
 
         if (!safeMaxScore || safeMaxScore <= 0) {
             throw new HttpException(400, 'Test bali 0 dan katta bo`lishi kerak');
+        }
+        if (isBankRandomized && (!bankSubject || !safeBankQuestionCount || safeBankQuestionCount <= 0)) {
+            throw new HttpException(400, 'Fan bazasi va har bir talabaga beriladigan savollar sonini kiriting');
         }
 
         const result = await sequelize.transaction(async (t) => {
@@ -229,7 +309,10 @@ class TestController extends BaseController {
             if (!test) throw new HttpException(404, 'Test not found');
 
             await test.update({
-                name, description, duration, maxScore: safeMaxScore, facultyIds, groupIds, studentIds: this.parseIds(studentIds), deadline
+                name, description, duration, maxScore: safeMaxScore, facultyIds, groupIds, studentIds: this.parseIds(studentIds), deadline,
+                isBankRandomized: !!isBankRandomized,
+                bankSubject: isBankRandomized ? bankSubject : null,
+                bankQuestionCount: isBankRandomized ? safeBankQuestionCount : null
             }, { transaction: t });
 
             if (questions) {

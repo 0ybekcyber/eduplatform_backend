@@ -29,6 +29,19 @@ const ensureScoringColumns = async () => {
         type: DataTypes.TEXT,
         allowNull: true
     });
+    await addColumnIfMissing(queryInterface, 'test', 'isBankRandomized', {
+        type: DataTypes.BOOLEAN,
+        allowNull: false,
+        defaultValue: false
+    });
+    await addColumnIfMissing(queryInterface, 'test', 'bankSubject', {
+        type: DataTypes.STRING(255),
+        allowNull: true
+    });
+    await addColumnIfMissing(queryInterface, 'test', 'bankQuestionCount', {
+        type: DataTypes.INTEGER,
+        allowNull: true
+    });
     await addColumnIfMissing(queryInterface, 'result', 'earnedScore', {
         type: DataTypes.FLOAT,
         allowNull: false,

@@ -185,6 +185,9 @@ module.exports = {
         facultyIds: { type: Sequelize.DataTypes.TEXT, allowNull: true },
         groupIds: { type: Sequelize.DataTypes.TEXT, allowNull: true },
         studentIds: { type: Sequelize.DataTypes.TEXT, allowNull: true },
+        isBankRandomized: { type: Sequelize.DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+        bankSubject: { type: Sequelize.DataTypes.STRING(255), allowNull: true },
+        bankQuestionCount: { type: Sequelize.DataTypes.INTEGER, allowNull: true },
         deadline: { type: Sequelize.DataTypes.DATE, allowNull: true },
         ...timestamps,
         ...paranoid
@@ -297,6 +300,9 @@ module.exports = {
       const extraColumns = [
         ['test', 'maxScore', { type: Sequelize.DataTypes.FLOAT, allowNull: false, defaultValue: 100 }],
         ['test', 'studentIds', { type: Sequelize.DataTypes.TEXT, allowNull: true }],
+        ['test', 'isBankRandomized', { type: Sequelize.DataTypes.BOOLEAN, allowNull: false, defaultValue: false }],
+        ['test', 'bankSubject', { type: Sequelize.DataTypes.STRING(255), allowNull: true }],
+        ['test', 'bankQuestionCount', { type: Sequelize.DataTypes.INTEGER, allowNull: true }],
         ['result', 'earnedScore', { type: Sequelize.DataTypes.FLOAT, allowNull: false, defaultValue: 0 }],
         ['assignment', 'maxScore', { type: Sequelize.DataTypes.FLOAT, allowNull: false, defaultValue: 100 }],
         ['assignment', 'studentIds', { type: Sequelize.DataTypes.TEXT, allowNull: true }],
