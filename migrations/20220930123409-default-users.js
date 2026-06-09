@@ -1,67 +1,46 @@
 'use strict';
 
-const sequelize = require('sequelize');
-
 /** @type {import('sequelize-cli').Migration} */
 module.exports = {
   async up (queryInterface, Sequelize) {
     const transaction = await queryInterface.sequelize.transaction();
     try {
-      await queryInterface.bulkInsert(
-        'user', 
-        [ 
-          { 
-            username: 'Programmer',
-            password: '$2a$08$YLZ7gtHc5KgiF3TlX/12r.boof4dIvGSoViUYxaRL8f7yHhKjPh0i', 
-            fullname: 'Dasturchi',  
-            role: `Programmer`,
-            deletedAt: null
-          } 
-        ], 
-        { transaction }
-      );
-
-      await queryInterface.bulkInsert(
-        'user', 
-        [ 
-          { 
-            username: 'Admin',
-            password: '$2a$08$YLZ7gtHc5KgiF3TlX/12r.boof4dIvGSoViUYxaRL8f7yHhKjPh0i', 
-            fullname: 'Admin',  
-            role: `Admin`,
-            deletedAt: null
-          } 
-        ], 
-        { transaction }
-      );
-      
-      queryInterface.sequelize.query(
-        'UPDATE user SET id = 0 WHERE id = 1',
+      const [existing] = await queryInterface.sequelize.query(
+        'SELECT id FROM user WHERE email = ? LIMIT 1',
         {
-          type: Sequelize.QueryTypes.UPDATE
-        },
-        { transaction }
+          replacements: ['admin@edutest.local'],
+          type: Sequelize.QueryTypes.SELECT,
+          transaction
+        }
       );
 
-      queryInterface.sequelize.query(
-        'UPDATE user SET id = 1 WHERE id = 2',
-        {
-          type: Sequelize.QueryTypes.UPDATE
-        },
-        { transaction }
-      );
+      if (!existing) {
+        await queryInterface.bulkInsert(
+          'user',
+          [
+            {
+              email: 'admin@edutest.local',
+              phone: null,
+              password: '$2a$08$YLZ7gtHc5KgiF3TlX/12r.boof4dIvGSoViUYxaRL8f7yHhKjPh0i',
+              firstname: 'Portal',
+              lastname: 'Admin',
+              role: 'Admin',
+              facultyId: null,
+              groupId: null,
+              image: null,
+              gender: 'Erkak',
+              createdAt: new Date(),
+              updatedAt: new Date(),
+              deletedAt: null
+            }
+          ],
+          { transaction }
+        );
+      }
 
-      queryInterface.sequelize.query(
-        'ALTER TABLE user AUTO_INCREMENT = 1',
-        {
-          type: Sequelize.QueryTypes.UPDATE
-        },
-        { transaction }
-      );
-
-      transaction.commit();
+      await transaction.commit();
     } catch (errors) {
-      transaction.rollback();
+      await transaction.rollback();
       throw errors;
     }
   },
@@ -69,10 +48,10 @@ module.exports = {
   async down (queryInterface, Sequelize) {
     const transaction = await queryInterface.sequelize.transaction();
     try {
-      
-      transaction.commit();
+      await queryInterface.bulkDelete('user', { email: 'admin@edutest.local' }, { transaction });
+      await transaction.commit();
     } catch (errors) {
-      transaction.rollback();
+      await transaction.rollback();
       throw errors;
     }
   }
